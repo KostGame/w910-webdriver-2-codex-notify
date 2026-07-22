@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible W910 Studio problem
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, device serial numbers, or unredacted private captures.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system and exact Chrome or Edge version
+      placeholder: macOS 15.5, Chrome 138.0.0.0
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Connection
+      description: USB or receiver, plus VID:PID if known
+      placeholder: USB B6A4:4100
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: Describe the smallest reliable sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the exact visible error or readback mismatch.
+    validations:
+      required: true
