@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Check JavaScript syntax
+        run: |
+          node --check web/app.js
+          node --check web/macro-recording.js
+          node --check web/protocol.js
+      - name: Run JavaScript tests
+        run: npm test
+      - name: Run Python tests
+        run: python -m unittest discover -s tests -v
