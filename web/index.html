@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Open browser configurator for the SXS/YXT W910 macro keyboard." />
+    <meta name="theme-color" content="#101216" />
+    <meta name="color-scheme" content="light" />
+    <title>W910 WebDriver</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">W</span>
+          <strong>W910 WebDriver</strong>
+        </div>
+
+        <section class="device-card" aria-label="Device connection">
+          <div class="device-card-top">
+            <span class="device-illustration" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+            <span id="connectionBadge" class="status-badge offline"><span></span>Disconnected</span>
+          </div>
+          <strong id="deviceName">W910 Macro Keyboard</strong>
+          <span id="deviceMeta">USB / 2.4 GHz / Bluetooth</span>
+          <p class="bluetooth-hint">BT Pairing: hold bottom RGB light button 3s</p>
+          <div class="connect-actions">
+            <button id="connectHidButton" class="primary">USB / 2.4 GHz</button>
+            <button id="connectBluetoothButton" class="secondary">Bluetooth</button>
+          </div>
+        </section>
+
+        <nav class="main-nav" aria-label="Configuration sections">
+          <button class="nav-item active" data-page="mapping">
+            <span class="nav-icon">⌨</span><span>Key mapping</span>
+          </button>
+          <button class="nav-item" data-page="lighting">
+            <span class="nav-icon">✦</span><span>Lighting</span>
+          </button>
+          <button class="nav-item" data-page="device">
+            <span class="nav-icon">◷</span><span>Device</span>
+          </button>
+          <button class="nav-item" data-page="backups">
+            <span class="nav-icon">↧</span><span>Backups</span>
+          </button>
+        </nav>
+
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div class="topbar-title">
+            <h1 id="pageTitle">Key mapping</h1>
+            <button id="progressBar" class="progress-status status-offline" aria-live="polite" disabled><span></span><p>Offline</p></button>
+          </div>
+          <div class="topbar-actions">
+            <div class="global-profile">
+              <span>Profile</span>
+              <div class="slot-picker" aria-label="Onboard profile">
+                <button class="active" data-slot="0">1</button>
+                <button data-slot="1">2</button>
+              </div>
+            </div>
+            <i class="toolbar-divider" aria-hidden="true"></i>
+            <button id="readButton" class="secondary" disabled>Reload</button>
+            <i class="toolbar-divider" aria-hidden="true"></i>
+            <a
+              class="github-link"
+              href="https://github.com/luftaquila/w910-webdriver"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="View source on GitHub"
+              title="View source on GitHub"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 .7a11.5 11.5 0 0 0-3.64 22.41c.58.11.79-.25.79-.56v-2.24c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.57-.29-5.27-1.28-5.27-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.47.11-3.05 0 0 .97-.31 3.16 1.18a10.9 10.9 0 0 1 5.75 0c2.19-1.49 3.15-1.18 3.15-1.18.63 1.58.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.71 5.38-5.29 5.67.42.36.79 1.07.79 2.16v3.21c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .7Z" />
+              </svg>
+            </a>
+          </div>
+        </header>
+
+        <div id="compatibilityNotice" class="notice hidden" role="alert"></div>
+
+        <section id="mappingPage" class="page active">
+          <div class="page-toolbar">
+            <div class="layer-picker" aria-label="Layer">
+              <button class="active" data-layer="normal">Normal</button>
+              <button data-layer="fn">Fn</button>
+            </div>
+          </div>
+
+          <div class="mapping-workspace">
+            <div class="keyboard-card">
+              <div class="card-heading">
+                <h3>Controls</h3>
+              </div>
+              <div id="keyboardGrid" class="keyboard-grid" aria-label="W910 key layout"></div>
+              <div class="keyboard-legend">
+                <span><i class="legend-dot key-dot"></i>Keyboard</span>
+                <span><i class="legend-dot special-dot"></i>Device / media</span>
+                <span><i class="legend-dot macro-dot"></i>Macro</span>
+                <span><i class="legend-dot raw-dot"></i>Advanced</span>
+              </div>
+            </div>
+
+            <aside class="summary-card">
+              <div class="card-heading"><h3>Summary</h3></div>
+              <div id="mappingSummary" class="mapping-summary"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="lightingPage" class="page">
+          <div class="settings-grid lighting-grid">
+            <article class="panel lighting-controls-panel">
+              <div class="card-heading full-field"><h3>Effect</h3><span id="lightingApplyStatus" class="inline-status">Connect to edit</span></div>
+              <label class="field full-field"><span>Mode</span><select id="lightingMode"></select></label>
+              <div id="lightingDetailControls">
+                <label id="brightnessField" class="field"><span>Brightness</span><input id="brightness" type="range" min="1" max="6" step="1" /><output id="brightnessValue"></output></label>
+                <label id="speedField" class="field"><span>Speed</span><input id="speed" type="range" min="1" max="7" step="1" /><output id="speedValue"></output></label>
+                <label id="directionField" class="field full-field"><span>Direction</span><select id="direction"><option value="0">Left / backward</option><option value="1">Right / forward</option></select></label>
+                <div id="colorField" class="color-field full-field"><span id="colorFieldLabel">Palette</span><div id="colorPalette" class="color-palette"></div></div>
+              </div>
+              <div id="lightingOffMessage" class="empty-state full-field hidden"><strong>Lighting off</strong></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="devicePage" class="page">
+          <div class="settings-grid">
+            <article class="panel status-panel">
+              <div class="card-heading"><h3>Status</h3></div>
+              <div class="battery-visual"><div class="battery-shell"><span id="batteryFill"></span></div><strong id="batteryText">—</strong></div>
+              <dl class="device-facts">
+                <div><dt>Power</dt><dd id="chargingText">Not connected</dd></div>
+                <div><dt>Transport</dt><dd id="transportText">—</dd></div>
+                <div><dt>MCU firmware</dt><dd id="firmwareVersionText">—</dd></div>
+                <div><dt>Build ID</dt><dd id="firmwareCustomText">—</dd></div>
+                <div><dt>Dongle firmware</dt><dd id="dongleFirmwareText">—</dd></div>
+                <div><dt>Status byte 2 (UNKNOWN)</dt><dd id="identityText">—</dd></div>
+              </dl>
+            </article>
+            <article class="panel power-panel">
+              <div class="card-heading"><h3>Power saving</h3></div>
+              <label class="field"><span>Sleep after</span><div class="number-with-unit"><input id="sleepSeconds" type="number" min="0" max="65535" step="1" /><em>seconds</em></div></label>
+              <label class="field"><span>Shut down after</span><div class="number-with-unit"><input id="powerDownSeconds" type="number" min="0" max="65535" step="1" /><em>seconds</em></div></label>
+            </article>
+          </div>
+        </section>
+
+        <section id="backupsPage" class="page">
+          <div class="settings-grid backup-grid">
+            <article class="panel">
+              <div class="card-heading"><h3>Import / export</h3></div>
+              <p class="panel-copy">Mappings, macros, lighting, and power settings.</p>
+              <div class="button-row"><button id="exportButton" class="secondary">Export</button><button id="importButton" class="secondary">Import</button><button id="resetButton" class="secondary danger-button">Factory defaults</button><input id="importFile" class="hidden" type="file" accept="application/json,.json" /></div>
+            </article>
+            <article class="panel">
+              <div class="card-heading"><h3>Snapshots</h3></div>
+              <div class="snapshot-create"><input id="snapshotName" type="text" maxlength="48" placeholder="Snapshot name" /><button id="saveSnapshotButton" class="primary">Save</button></div>
+              <div id="snapshotList" class="snapshot-list"></div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="actionDialog" class="action-dialog">
+      <form method="dialog" id="actionForm">
+        <header class="dialog-header">
+          <div><span class="dialog-context" id="actionLayerLabel">Normal layer</span><h2 id="actionControlLabel">Assign key</h2></div>
+          <button class="icon-button" value="cancel" aria-label="Close">×</button>
+        </header>
+        <div class="action-tabs" role="tablist">
+          <button type="button" data-action-kind="keyboard">Keyboard</button>
+          <button type="button" data-action-kind="special">Command</button>
+          <button type="button" data-action-kind="macro">Macro</button>
+          <button type="button" data-action-kind="raw">Raw</button>
+        </div>
+        <div class="dialog-body">
+          <section class="action-editor" data-editor="keyboard">
+            <div class="filtered-picker full-field">
+              <div class="picker-heading"><span>Key</span><code id="keyboardUsageCode">02 04 00 00</code></div>
+              <input id="keyboardSearch" class="picker-search" type="search" placeholder="Search keys" autocomplete="off" />
+              <select id="keyboardUsage" class="picker-results" size="7" aria-label="Key"></select>
+            </div>
+            <div class="capture-row"><button type="button" id="captureKeyButton" class="secondary">Capture key</button></div>
+          </section>
+          <section class="action-editor" data-editor="special">
+            <div class="filtered-picker full-field">
+              <div class="picker-heading"><span>Command</span><code id="specialActionCode">—</code></div>
+              <input id="specialSearch" class="picker-search" type="search" placeholder="Search commands" autocomplete="off" />
+              <select id="specialAction" class="picker-results" size="7" aria-label="Command"></select>
+            </div>
+          </section>
+          <section class="action-editor macro-editor" data-editor="macro">
+            <div class="macro-settings">
+              <label class="field"><span>Playback</span><select id="macroMode"><option value="0">Repeat count</option><option value="1">While held</option><option value="2">Toggle</option></select></label>
+              <label class="field"><span>Repeat count</span><input id="macroRepeat" type="number" min="0" max="65535" value="1" /></label>
+            </div>
+            <div class="macro-toolbar">
+              <strong>Events</strong>
+              <div class="macro-toolbar-actions">
+                <button type="button" id="recordMacroButton" class="secondary record-button">Record</button>
+                <button type="button" id="clearMacroButton" class="secondary clear-macro-button" disabled>Clear all</button>
+                <select id="addMacroEvent"><option value="">Add event…</option><option value="keystroke">Keystroke</option><option value="keyboard">Keyboard state</option><option value="mouse_button">Mouse button</option><option value="wheel">Mouse wheel</option><option value="move">Mouse movement</option></select>
+              </div>
+            </div>
+            <div id="macroRecordingStatus" class="recording-status hidden"><i></i><span>Recording keys, mouse buttons, and wheel · Esc to stop</span></div>
+            <div class="macro-columns" aria-hidden="true"><span>#</span><span>Type</span><span>Value / state</span><span>Delay (ms)</span><span>Actions</span></div>
+            <div id="macroEvents" class="macro-events"></div>
+            <div id="macroEmpty" class="empty-state"><strong>No events</strong></div>
+            <div class="macro-size"><span>Encoded size</span><strong id="macroSize">4 / 512 bytes</strong></div>
+          </section>
+          <section class="action-editor" data-editor="raw">
+            <label class="field full-field"><span>Action bytes</span><input id="rawAction" type="text" maxlength="11" spellcheck="false" placeholder="02 04 00 00" /></label>
+            <p class="field-note">Preserves unsupported firmware actions.</p>
+          </section>
+        </div>
+        <footer class="dialog-footer"><button value="cancel" class="secondary">Cancel</button><button id="saveActionButton" type="button" class="primary">Save</button></footer>
+      </form>
+    </dialog>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
