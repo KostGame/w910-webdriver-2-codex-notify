@@ -1,0 +1,29 @@
+# Operating-system and editor files
+.DS_Store
+*.swp
+*.swo
+
+# Language caches
+node_modules/
+__pycache__/
+*.py[cod]
+
+# Local build and visual-test output
+build/
+tmp/
+
+# Vendor-owned binaries, extracted resources, and private capture evidence
+downloads/
+artifacts/
+ANALYSIS.md
+tools/ghidra_scripts/
+tools/hid-proxy/
+tools/ilspy/
+tools/innoextract/
+
+# One-off local reverse-engineering and browser-driving helpers
+tools/app_device_smoke.mjs
+tools/remote_capture.py
+tools/render_lighting.mjs
+tools/webhid_smoke.mjs
+tools/w910_usb_bridge.c
