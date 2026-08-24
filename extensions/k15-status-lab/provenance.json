@@ -2,7 +2,9 @@
   "sourceRepository": "KostGame/vorotex-kb-profiles-and-macros2vibecoding",
   "sourcePath": "status-lab",
   "sourceRef": "agent/k15-status-lab-vnext",
-  "sourceCommit": "cb2bce00a00a3f2d8d7d460b1cd4dd7aae0cc411",
+  "sourceCommit": "f6d6907fb7f256820db6e051b4336e5876e1a7fb",
   "protocolFoundation": "luftaquila/w910-webdriver",
-  "mirrorPolicy": "curated-whitelist"
+  "mirrorPolicy": "curated-whitelist",
+  "distributionStatus": "preview",
+  "license": "GPL-3.0-only"
 }
