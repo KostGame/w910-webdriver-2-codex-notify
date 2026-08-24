@@ -1,0 +1,96 @@
+name: Sync upstream W910 WebDriver
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_upstream_sha:
+        description: Optional exact luftaquila/w910-webdriver main SHA; fail closed if upstream moved
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-upstream-w910
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout downstream fork main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fetch canonical upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/luftaquila/w910-webdriver.git
+          git fetch --no-tags upstream main
+          UPSTREAM_SHA="$(git rev-parse upstream/main)"
+          EXPECTED="${{ inputs.expected_upstream_sha }}"
+          echo "Resolved upstream: $UPSTREAM_SHA"
+          if [[ -n "$EXPECTED" && "$UPSTREAM_SHA" != "$EXPECTED" ]]; then
+            echo "Expected upstream $EXPECTED but upstream/main resolved to $UPSTREAM_SHA" >&2
+            exit 1
+          fi
+          echo "UPSTREAM_SHA=$UPSTREAM_SHA" >> "$GITHUB_ENV"
+
+      - name: Prepare reviewed upstream branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout -B sync/upstream-w910 origin/main
+
+      - name: Merge upstream fail-closed
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Downstream main already contains upstream/main."
+            exit 0
+          fi
+
+          if ! git merge --no-ff --no-commit upstream/main; then
+            echo "Upstream merge has conflicts. Resolve them in a normal review branch; workflow will not guess." >&2
+            git merge --abort || true
+            exit 1
+          fi
+
+          git commit -m "chore(upstream): sync luftaquila/w910-webdriver @ ${UPSTREAM_SHA:0:12}"
+          git push --force-with-lease origin sync/upstream-w910
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update upstream sync PR
+        if: steps.merge.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TITLE="chore(upstream): sync luftaquila/w910-webdriver"
+          BODY=$(cat <<EOF
+          Reviewed upstream synchronization from the canonical fork parent.
+
+          - Upstream repository: \`luftaquila/w910-webdriver\`
+          - Exact upstream commit: \`$UPSTREAM_SHA\`
+          - Downstream base: \`main\`
+
+          The workflow merges upstream into a dedicated branch and fails closed on conflicts. It never commits upstream changes directly to downstream \`main\`.
+
+          Keep this PR separate from K15 Status Lab mirror updates so upstream authorship/history and downstream extension changes remain easy to audit.
+          EOF
+          )
+
+          if gh pr view sync/upstream-w910 --json number >/dev/null 2>&1; then
+            gh pr edit sync/upstream-w910 --title "$TITLE" --body "$BODY"
+          else
+            gh pr create --base main --head sync/upstream-w910 --title "$TITLE" --body "$BODY"
+          fi
