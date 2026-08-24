@@ -50,7 +50,7 @@ jobs:
           set -euo pipefail
           SRC="$GITHUB_WORKSPACE/source/status-lab"
           DST="$GITHUB_WORKSPACE/fork/extensions/k15-status-lab"
-          mkdir -p "$DST/src" "$DST/configurator"
+          mkdir -p "$DST/src/configurator" "$DST/configurator"
 
           files=(
             ConfigToml.cs
@@ -73,6 +73,11 @@ jobs:
             cp "$SRC/$file" "$DST/src/$file"
           done
 
+          # Exact build inputs stay beside the mirrored .csproj.
+          cp "$SRC/configurator/index.html" "$DST/src/configurator/index.html"
+          cp "$SRC/status-lab-config.example.toml" "$DST/src/status-lab-config.example.toml"
+
+          # Convenience copies are exposed at the extension root for direct use/browsing.
           cp "$SRC/configurator/index.html" "$DST/configurator/index.html"
           cp "$SRC/status-lab-config.example.toml" "$DST/status-lab-config.example.toml"
 
@@ -122,15 +127,23 @@ jobs:
 
           This directory is an integration mirror, not the development source of truth. See `SOURCE.md` and `provenance.json`.
 
+          ## Build
+
+          The mirrored project remains self-contained under `src/`:
+
+          `dotnet publish src/Vorotex.K15.StatusLab.csproj -c Release -r win-x64`
+
+          Root-level `status-lab-config.example.toml` and `configurator/index.html` are convenience copies of the exact assets kept beside the project in `src/`.
+
           ## Current maturity
 
-          The first mirrored revision may come from the open VOROTEX Status Lab RC while physical Effect Lab acceptance is pending. Check `provenance.json` before treating a mirrored revision as stable.
+          The first mirrored revision may come from the open VOROTEX Status Lab RC while final physical profile-switch acceptance is pending. Check `provenance.json` before treating a mirrored revision as stable.
 
           ## Included
 
           - minimal buildable Status Lab application source;
           - Codex hook helper/install scripts;
-          - annotated TOML example;
+          - annotated TOML configuration;
           - offline HTML configurator.
 
           ## Intentionally not mirrored
