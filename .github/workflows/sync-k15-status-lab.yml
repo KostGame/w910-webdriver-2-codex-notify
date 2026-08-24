@@ -1,0 +1,187 @@
+name: Sync K15 Status Lab
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Source ref in KostGame/vorotex-kb-profiles-and-macros2vibecoding
+        required: true
+        default: main
+  push:
+    branches:
+      - integration/k15-status-lab-initial
+    paths:
+      - .github/workflows/sync-k15-status-lab.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout downstream fork
+        uses: actions/checkout@v4
+        with:
+          path: fork
+          fetch-depth: 0
+
+      - name: Resolve source ref
+        id: source
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "ref=${{ inputs.source_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=agent/k15-status-lab-vnext" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout primary VOROTEX repository
+        uses: actions/checkout@v4
+        with:
+          repository: KostGame/vorotex-kb-profiles-and-macros2vibecoding
+          ref: ${{ steps.source.outputs.ref }}
+          path: source
+          fetch-depth: 1
+
+      - name: Curated import
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/source/status-lab"
+          DST="$GITHUB_WORKSPACE/fork/extensions/k15-status-lab"
+          mkdir -p "$DST/src" "$DST/configurator"
+
+          files=(
+            ConfigToml.cs
+            EventJournal.cs
+            JournalStateNormalizer.cs
+            K15HidLightingController.cs
+            K15HidProtocol.cs
+            K15RgbCanary.cs
+            Program.cs
+            StateReducer.cs
+            StatusLabApplicationContext.cs
+            StatusLabConfig.cs
+            Vorotex.K15.StatusLab.csproj
+            WindowsNotificationPoller.cs
+            codex-hook-logger.ps1
+            install-codex-hooks.ps1
+          )
+
+          for file in "${files[@]}"; do
+            cp "$SRC/$file" "$DST/src/$file"
+          done
+
+          cp "$SRC/configurator/index.html" "$DST/configurator/index.html"
+          cp "$SRC/status-lab-config.example.toml" "$DST/status-lab-config.example.toml"
+
+          SOURCE_SHA="$(git -C "$GITHUB_WORKSPACE/source" rev-parse HEAD)"
+          SOURCE_REF="${{ steps.source.outputs.ref }}"
+
+          cat > "$DST/provenance.json" <<EOF
+          {
+            "sourceRepository": "KostGame/vorotex-kb-profiles-and-macros2vibecoding",
+            "sourcePath": "status-lab",
+            "sourceRef": "$SOURCE_REF",
+            "sourceCommit": "$SOURCE_SHA",
+            "protocolFoundation": "luftaquila/w910-webdriver",
+            "mirrorPolicy": "curated-whitelist"
+          }
+          EOF
+
+          cat > "$DST/SOURCE.md" <<EOF
+          # Source and lineage
+
+          This directory is a curated downstream mirror of **VOROTEX K15 Status Lab**.
+
+          - Primary development repository: `KostGame/vorotex-kb-profiles-and-macros2vibecoding`
+          - Primary source path: `status-lab/`
+          - Mirrored ref: `$SOURCE_REF`
+          - Mirrored commit: `$SOURCE_SHA`
+          - HID/protocol foundation: `luftaquila/w910-webdriver`
+
+          Development happens in the primary VOROTEX repository. Do not maintain an independent implementation here.
+          Changes are imported through the whitelist in `.github/workflows/sync-k15-status-lab.yml`.
+          EOF
+
+          cat > "$DST/README.md" <<'EOF'
+          # K15 Status Lab / Codex Notify
+
+          Windows tray helper for VOROTEX K15 Pro that turns Codex lifecycle state into hardware RGB effects.
+
+          The core UX model is deliberately simple:
+
+          - **profile color identifies the active hardware profile**;
+          - **lighting effect identifies agent state**;
+          - Profile A is configured as red and Profile B as blue by default;
+          - `NORMAL` restores the exact hardware baseline rather than inventing another notification state;
+          - configuration is human-editable TOML;
+          - the bundled offline HTML configurator edits the same configuration visually;
+          - Effect Lab provides bounded physical testing of candidate effects.
+
+          This directory is an integration mirror, not the development source of truth. See `SOURCE.md` and `provenance.json`.
+
+          ## Current maturity
+
+          The first mirrored revision may come from the open VOROTEX Status Lab RC while physical Effect Lab acceptance is pending. Check `provenance.json` before treating a mirrored revision as stable.
+
+          ## Included
+
+          - minimal buildable Status Lab application source;
+          - Codex hook helper/install scripts;
+          - annotated TOML example;
+          - offline HTML configurator.
+
+          ## Intentionally not mirrored
+
+          - VOROTEX keyboard profile packages;
+          - macro libraries;
+          - HUD sources;
+          - research fixtures and owner-canary evidence;
+          - historical JSON configuration;
+          - unrelated repository documentation.
+          EOF
+
+          cat > "$DST/NOTICE.md" <<'EOF'
+          # Licensing note
+
+          This repository is a fork of `luftaquila/w910-webdriver` and retains the upstream GPL-3.0 license for the upstream project.
+
+          The mirrored K15 Status Lab originates in `KostGame/vorotex-kb-profiles-and-macros2vibecoding`, which currently has no root LICENSE file. This integration branch therefore does **not** attempt to make a new licensing declaration for Status Lab. Resolve the Status Lab distribution license explicitly before merging this integration into the fork's main branch.
+          EOF
+
+      - name: Add downstream banner without rewriting upstream README
+        shell: python
+        working-directory: fork
+        run: |
+          from pathlib import Path
+          p = Path("README.md")
+          text = p.read_text(encoding="utf-8")
+          marker = "<!-- KOSTGAME-DOWNSTREAM-START -->"
+          if marker not in text:
+              banner = """<!-- KOSTGAME-DOWNSTREAM-START -->
+          > [!IMPORTANT]
+          > **KostGame downstream fork.** This repository preserves the original W910 WebDriver and stages a curated **VOROTEX K15 Pro Codex/ChatGPT RGB Status Lab** extension under [`extensions/k15-status-lab/`](extensions/k15-status-lab/). Primary Status Lab development remains in `KostGame/vorotex-kb-profiles-and-macros2vibecoding`.
+          >
+          > Original project and HID/protocol foundation: **luftaquila/w910-webdriver**.
+          <!-- KOSTGAME-DOWNSTREAM-END -->
+
+          """
+              p.write_text(banner + text, encoding="utf-8")
+
+      - name: Commit synchronized mirror
+        shell: bash
+        working-directory: fork
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md extensions/k15-status-lab
+          if git diff --cached --quiet; then
+            echo "No curated Status Lab changes."
+            exit 0
+          fi
+          SOURCE_SHA="$(git -C "$GITHUB_WORKSPACE/source" rev-parse HEAD)"
+          git commit -m "sync(k15-status-lab): import source @ ${SOURCE_SHA:0:12}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
