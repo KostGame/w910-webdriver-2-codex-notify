@@ -1,0 +1,8 @@
+{
+  "sourceRepository": "KostGame/vorotex-kb-profiles-and-macros2vibecoding",
+  "sourcePath": "status-lab",
+  "sourceRef": "agent/k15-status-lab-vnext",
+  "sourceCommit": "cb2bce00a00a3f2d8d7d460b1cd4dd7aae0cc411",
+  "protocolFoundation": "luftaquila/w910-webdriver",
+  "mirrorPolicy": "curated-whitelist"
+}

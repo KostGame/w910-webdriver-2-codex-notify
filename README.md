@@ -1,3 +1,10 @@
+<!-- KOSTGAME-DOWNSTREAM-START -->
+> [!IMPORTANT]
+> **KostGame downstream fork.** This repository preserves the original W910 WebDriver and stages a curated **VOROTEX K15 Pro Codex/ChatGPT RGB Status Lab** extension under [`extensions/k15-status-lab/`](extensions/k15-status-lab/). Primary Status Lab development remains in `KostGame/vorotex-kb-profiles-and-macros2vibecoding`.
+>
+> Original project and HID/protocol foundation: **luftaquila/w910-webdriver**.
+<!-- KOSTGAME-DOWNSTREAM-END -->
+
 # W910 WebDriver
 
 Open-source browser configurator for the SXS/YXT W910 macro keyboard. It communicates directly with the device through WebHID or Web Bluetooth, without the vendor driver or application.
