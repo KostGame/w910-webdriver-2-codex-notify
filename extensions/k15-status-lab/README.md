@@ -14,15 +14,23 @@ The core UX model is deliberately simple:
 
 This directory is an integration mirror, not the development source of truth. See `SOURCE.md` and `provenance.json`.
 
+## Build
+
+The mirrored project remains self-contained under `src/`:
+
+`dotnet publish src/Vorotex.K15.StatusLab.csproj -c Release -r win-x64`
+
+Root-level `status-lab-config.example.toml` and `configurator/index.html` are convenience copies of the exact assets kept beside the project in `src/`.
+
 ## Current maturity
 
-The first mirrored revision may come from the open VOROTEX Status Lab RC while physical Effect Lab acceptance is pending. Check `provenance.json` before treating a mirrored revision as stable.
+The first mirrored revision may come from the open VOROTEX Status Lab RC while final physical profile-switch acceptance is pending. Check `provenance.json` before treating a mirrored revision as stable.
 
 ## Included
 
 - minimal buildable Status Lab application source;
 - Codex hook helper/install scripts;
-- annotated TOML example;
+- annotated TOML configuration;
 - offline HTML configurator.
 
 ## Intentionally not mirrored
