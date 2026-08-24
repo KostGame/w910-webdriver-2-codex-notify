@@ -1,5 +1,23 @@
-# Licensing note
+# K15 Status Lab notice
 
-This repository is a fork of `luftaquila/w910-webdriver` and retains the upstream GPL-3.0 license for the upstream project.
+This repository is a downstream fork of `luftaquila/w910-webdriver` and preserves the original W910 project history, attribution and GPL-3.0 license.
 
-The mirrored K15 Status Lab originates in `KostGame/vorotex-kb-profiles-and-macros2vibecoding`, which currently has no root LICENSE file. This integration branch therefore does **not** attempt to make a new licensing declaration for Status Lab. Resolve the Status Lab distribution license explicitly before merging this integration into the fork's main branch.
+The **VOROTEX K15 Status Lab** under this directory is an additional component maintained primarily in:
+
+`KostGame/vorotex-kb-profiles-and-macros2vibecoding/status-lab`
+
+It is published here under **GPL-3.0-only**. See `LICENSE.md` and the repository root `LICENSE`.
+
+## Lineage
+
+The Status Lab work uses HID/protocol knowledge derived from and validated against the W910 WebDriver project. This fork exists specifically to keep that technical lineage visible rather than presenting the K15 integration as unrelated work.
+
+For every synchronized revision:
+
+- `SOURCE.md` identifies the primary repository and source path;
+- `provenance.json` records the exact mirrored Git commit;
+- the curated sync workflow limits what can be copied into this fork.
+
+## Development boundary
+
+Status Lab implementation work belongs in the primary VOROTEX repository. This fork is the public downstream integration/distribution surface plus W910 upstream lineage.
