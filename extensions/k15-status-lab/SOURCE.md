@@ -5,9 +5,9 @@ This directory is a curated downstream mirror of VOROTEX K15 Status Lab.
 - Primary development repository: KostGame/vorotex-kb-profiles-and-macros2vibecoding
 - Primary source path: status-lab/
 - Mirrored ref: main
-- Mirrored commit: b52dec62729d6ced79866124dfeae322ac762014
+- Mirrored commit: 404e2be9474a51ded10c98d13de50ef3ae480e29
 - HID/protocol foundation: luftaquila/w910-webdriver
-- Distribution status: beta / release-candidate track
+- Distribution status: release candidate
 - Component license: GPL-3.0-only
 
 Development happens in the primary VOROTEX repository. Do not maintain an independent Status Lab implementation here.
