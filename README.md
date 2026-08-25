@@ -2,7 +2,7 @@
 
 > **KostGame downstream fork of [`luftaquila/w910-webdriver`](https://github.com/luftaquila/w910-webdriver).**
 >
-> The original browser-based W910 configurator and its history are preserved here. This fork adds a curated **VOROTEX K15 Pro Status Lab** integration that can use the keyboard RGB as a compact Codex/ChatGPT activity indicator.
+> The original browser-based W910 configurator and its history are preserved here. This fork adds a curated **VOROTEX K15 Pro Status Lab** integration that can use keyboard RGB as a compact Codex/ChatGPT activity indicator.
 
 ## What this fork adds
 
@@ -10,50 +10,66 @@ The added component lives under [`extensions/k15-status-lab/`](extensions/k15-st
 
 **K15 Status Lab** is a Windows tray application with:
 
-- profile-aware RGB notifications for agent lifecycle states;
+- profile-aware RGB notifications for Codex lifecycle states;
+- session-aware foreground-state tracking and bounded restart rehydration;
 - human-editable TOML configuration;
 - a bundled offline HTML configurator;
-- an RGB Effect Lab for controlled hardware testing;
-- exact baseline snapshot/restore instead of permanently replacing the user's normal lighting;
+- exact keyboard-lighting baseline snapshot/restore;
 - Codex hook helpers;
+- a separate **Lighting Lab** executable for controlled low-level RGB research;
 - revision-level provenance back to the primary VOROTEX repository.
 
-The default model is intentionally simple:
+Current physical defaults use a deliberately small visual language:
 
-| Meaning | Default |
+| Meaning | Current default |
 | --- | --- |
 | Profile A | red |
 | Profile B | blue |
-| Profile identity | color |
-| Agent state | lighting effect |
-| Normal state | restore exact keyboard baseline |
+| RGB tracking enabled | short red + blue Flowing Water |
+| RUNNING | Flowing Water in active profile color |
+| WAITING / request | Single-color breathing, active profile color |
+| STOP signal | short red + blue Cycle breathing |
+| DONE pending attention | slower Single-color breathing, active profile color |
+| Profile switch | short Flowing Water in the new profile color |
+| NORMAL | restore exact keyboard baseline |
 
-Notifier modes are limited to controlled one-color/two-color-safe effects. Rainbow-style and uncontrolled multicolor modes are intentionally excluded from the normal configuration surface.
+Uncontrolled rainbow-style modes remain research-only and are excluded from normal notifier defaults.
+
+## Current maturity
+
+The mirrored Status Lab is now on the **beta / release-candidate track**. The primary VOROTEX Status Lab beta was merged after owner physical testing and includes schema v3 configuration, session-aware recovery, accepted RGB defaults, tray tracking visibility, and Lighting Lab.
+
+The downstream mirror remains intentionally conservative: it follows accepted source revisions and does not independently develop another Status Lab implementation.
 
 ## Quick start: K15 Status Lab
 
-The mirrored project is self-contained under:
+The mirrored projects are self-contained under:
 
 ```text
 extensions/k15-status-lab/src/
 ```
 
-Build/publish on Windows with .NET 8:
+Build/publish Status Lab on Windows with .NET 8:
 
 ```powershell
 dotnet publish extensions/k15-status-lab/src/Vorotex.K15.StatusLab.csproj -c Release -r win-x64
+```
+
+Build/publish Lighting Lab:
+
+```powershell
+dotnet publish extensions/k15-status-lab/src/lighting-lab/Vorotex.K15.LightingLab.csproj -c Release -r win-x64
 ```
 
 Useful files:
 
 - [`extensions/k15-status-lab/README.md`](extensions/k15-status-lab/README.md) - Status Lab usage and architecture
 - [`extensions/k15-status-lab/configurator/index.html`](extensions/k15-status-lab/configurator/index.html) - offline visual TOML configurator
-- [`extensions/k15-status-lab/status-lab-config.example.toml`](extensions/k15-status-lab/status-lab-config.example.toml) - annotated configuration
+- [`extensions/k15-status-lab/status-lab-config.example.toml`](extensions/k15-status-lab/status-lab-config.example.toml) - annotated schema-v3 configuration
+- [`extensions/k15-status-lab/lighting-lab/README.md`](extensions/k15-status-lab/lighting-lab/README.md) - Lighting Lab notes
 - [`extensions/k15-status-lab/provenance.json`](extensions/k15-status-lab/provenance.json) - exact mirrored source revision
 - [`docs/REPOSITORY_MODEL.md`](docs/REPOSITORY_MODEL.md) - how upstream and VOROTEX updates stay separate
 - [`docs/K15_STATUS_LAB.md`](docs/K15_STATUS_LAB.md) - user-facing Status Lab guide
-
-> **Current maturity:** the first published integration is a working research/preview build. Core Effect Lab behavior is usable, while hardware-specific defaults can still evolve as physical K15 testing continues.
 
 ## Source of truth and lineage
 
@@ -81,13 +97,13 @@ Two separate review workflows keep histories readable:
 - W910 upstream updates -> `sync/upstream-w910` -> PR
 - Status Lab updates -> `sync/k15-status-lab` -> PR
 
-Neither synchronization path is intended to silently overwrite downstream `main`.
+Neither synchronization path silently overwrites downstream `main`.
 
 ## License and attribution
 
 The original W910 WebDriver is distributed under the repository's GPL-3.0 license and remains attributed to its upstream authors.
 
-The K15 Status Lab component is also published under **GPL-3.0-only**. Its component-level licensing and lineage are documented in:
+The K15 Status Lab component is published under **GPL-3.0-only**. Its component-level licensing and lineage are documented in:
 
 - [`extensions/k15-status-lab/LICENSE.md`](extensions/k15-status-lab/LICENSE.md)
 - [`extensions/k15-status-lab/NOTICE.md`](extensions/k15-status-lab/NOTICE.md)

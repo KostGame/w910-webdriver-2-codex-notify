@@ -4,102 +4,162 @@ K15 Status Lab turns a compatible VOROTEX K15 Pro into a small physical status d
 
 ## Mental model
 
-The notifier uses two orthogonal signals:
+The notifier separates two signals:
 
 - **color = hardware profile**
 - **effect = semantic agent state**
-
-This keeps profile identity visible even when the state changes.
 
 Default profile colors:
 
 | Profile | Default color |
 | --- | --- |
-| A | Red `#FF0000` |
-| B | Blue `#0000FF` |
+| A / TOOLS-AUTH | Red `#FF0000` |
+| B / MAIN-VIBECODING | Blue `#0000FF` |
 
-Semantic states:
+The current schema also supports two palette sources:
 
-| State | Meaning |
+- `profile` - use the physically active profile color;
+- `profile_pair` - use the canonical A+B pair, currently red then blue.
+
+## Current beta / release-candidate defaults
+
+| Event/state | Current default |
 | --- | --- |
-| NORMAL | no notifier override; restore the exact keyboard baseline |
-| RUNNING | agent is working |
-| WAITING | user/permission/input is needed |
-| DONE | bounded completion attention state |
-| ERROR | reserved for high-confidence semantic/application error |
+| RGB tracking ON | short Flowing Water, red + blue (`profile_pair`) |
+| RUNNING | Flowing Water, active profile color |
+| WAITING / request | Single-color breathing, speed 7, active profile color |
+| STOP signal | short Cycle breathing, red + blue |
+| DONE pending attention | Single-color breathing, speed 5, active profile color |
+| Physical A/B switch | short Flowing Water in the new profile color |
+| NORMAL | restore exact keyboard baseline |
+| ERROR | reserved until a high-confidence semantic error source exists |
 
-A HID transport error is not automatically a semantic `ERROR`.
+A HID transport failure, reconnect problem, or unrelated Windows notification must not automatically become semantic `ERROR`.
 
-## Start the app
+## Hardware safety model
 
-Run the published `Vorotex.K15.StatusLab.exe`. The app lives in the Windows tray.
+Status Lab is intentionally lighting-only.
 
-The tray exposes the RGB canary, TOML/configurator entry points and Effect Lab. Exact labels may evolve while the preview matures.
+It does not write:
 
-## Configure it
+- macros;
+- key mappings;
+- power settings;
+- firmware.
 
-Two equivalent configuration paths are provided.
-
-### TOML
-
-Use `extensions/k15-status-lab/status-lab-config.example.toml` as the reference.
-
-The configuration owns:
-
-- wire color order;
-- profile A/B colors;
-- effect, brightness, speed, direction and duration for each semantic state;
-- profile-switch overlay behavior;
-- optional activation signal;
-- Effect Lab duration.
-
-### Offline HTML configurator
-
-Open `extensions/k15-status-lab/configurator/index.html` in a browser.
-
-It works without a server or network connection. The browser security model intentionally means it does not silently overwrite the application's live config. Instead it loads a TOML file and generates/downloads a validated replacement.
-
-## Controlled-palette policy
-
-Normal notifier configuration allows only modes that can be constrained to the active profile color:
-
-- Constant
-- Flowing Water
-- Mono Water
-- Single-color breathing
-- Off
-
-Uncontrolled/rainbow-style modes are excluded from the normal configuration UI even if the low-level HID protocol knows their numeric mode IDs.
-
-## Effect Lab
-
-Effect Lab is the hardware truth-check.
-
-Use it to answer questions such as:
-
-- does this mode stay one color on the real keyboard?
-- does it leave a stale effect after switching profiles?
-- does RGB Off restore both touched profiles?
-
-Each test is bounded and should restore/resume after the configured test duration.
+The current implementation also follows an observe-only hardware-profile policy while reacting to physical profile changes. It writes the overlay to the already selected profile instead of programmatically switching A/B slots behind the user's back.
 
 ## Baseline restore
 
-Status Lab distinguishes two concepts:
+Status Lab distinguishes:
 
-1. **Device baseline snapshot**: exact bytes read from the physical keyboard before notifier writes.
-2. **Profile render policy**: color plus state effect used while notifications are active.
+1. **Device baseline snapshot**: exact lighting bytes read from the keyboard before notifier writes.
+2. **Notifier render policy**: palette + effect used while tracking is active.
 
-`NORMAL`, RGB Off and application exit rely on the captured baseline rather than synthesizing a guessed normal effect.
+`NORMAL`, RGB tracking Off and application exit restore from captured device state rather than synthesizing a guessed normal effect.
 
-## Profile switching
+Inactive-profile restoration may be deferred until that profile is physically selected, avoiding hidden hardware profile switches.
 
-A profile-switch notification uses the **new active profile's color**. After the short overlay, the current semantic state resumes in that same profile color.
+## Codex session-aware state tracking
 
-The project treats physical observations as authoritative because vendor effect names are not guaranteed to match real device behavior.
+The beta baseline tracks Codex state per session rather than using one global bit of state.
 
-## Codex hooks
+Hook metadata such as `sessionId`, `turnId` and `cwd` is preserved. Internal memory/background sessions are kept from stealing semantic foreground focus from the actual task session.
 
-Status Lab includes helper scripts for Codex lifecycle integration. The current semantic model consumes signals around prompt submission, permission requests, tool use and stop/completion.
+On startup, Status Lab performs a bounded replay of recent hook events so an active Codex session can be rehydrated instead of blindly returning to `NORMAL` after an app restart.
 
-The notifier is intentionally small and conservative. It should tell you what the agent is doing without becoming a miniature RGB carnival on the desk.
+Windows notifications remain supplemental. They are not the primary semantic source.
+
+## Tray UI
+
+The Windows tray exposes:
+
+- RGB tracking On/Off;
+- normalized semantic state;
+- focused Codex session short ID;
+- TOML/configurator entry points;
+- bounded RGB test tooling.
+
+The tray icon itself distinguishes tracking Off vs On so you do not need to open the menu to see whether tracking is enabled.
+
+## Configuration
+
+The canonical configuration is commented TOML, currently schema v3.
+
+Use:
+
+`extensions/k15-status-lab/status-lab-config.example.toml`
+
+The configuration controls:
+
+- wire color order;
+- profile A/B colors;
+- palette source (`profile` / `profile_pair`);
+- effect, brightness, speed, direction and duration;
+- profile-switch overlay;
+- tracking activation signal;
+- STOP signal behavior;
+- Effect Lab duration.
+
+Legacy schema v2 is accepted/migrated in memory and is not silently rewritten over the user's file.
+
+Malformed TOML is preserved unchanged; safe defaults are used only for the current run.
+
+## Offline HTML configurator
+
+Open:
+
+`extensions/k15-status-lab/configurator/index.html`
+
+It works without a server or network connection. The browser intentionally does not overwrite the live application config automatically. Load a TOML file, edit it visually, then generate/download the validated replacement.
+
+## Production-safe effect set
+
+Physical K15 testing currently supports these notifier-safe modes:
+
+- Constant;
+- Flowing Water;
+- Mono Water;
+- Single-color breathing;
+- Cycle breathing with an explicitly controlled one- or two-color palette;
+- Off / baseline restore.
+
+Research-only modes include Tetris, Neon, Ambilight and OEM `Horse race` (`0x83`) where physical output is distracting or internally/uncontrollably multicolor.
+
+## Lighting Lab
+
+The downstream package also carries a separate project:
+
+`extensions/k15-status-lab/src/lighting-lab/Vorotex.K15.LightingLab.csproj`
+
+Lighting Lab is for low-level RGB research rather than day-to-day semantic notification. It is useful for:
+
+- testing raw effect modes;
+- one- and two-color palette masks;
+- brightness/speed/direction experiments;
+- exact restore behavior;
+- recording owner observations.
+
+Keeping this separate prevents experimental hardware probing from leaking into the normal notifier UI.
+
+## Build
+
+Status Lab:
+
+```powershell
+dotnet publish extensions/k15-status-lab/src/Vorotex.K15.StatusLab.csproj -c Release -r win-x64
+```
+
+Lighting Lab:
+
+```powershell
+dotnet publish extensions/k15-status-lab/src/lighting-lab/Vorotex.K15.LightingLab.csproj -c Release -r win-x64
+```
+
+## Source and maturity
+
+Primary development happens in:
+
+`KostGame/vorotex-kb-profiles-and-macros2vibecoding/status-lab`
+
+This fork is a curated integration/distribution mirror. `provenance.json` identifies the exact source commit used for each mirrored revision.
