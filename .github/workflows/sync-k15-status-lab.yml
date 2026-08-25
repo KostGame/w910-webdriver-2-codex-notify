@@ -11,6 +11,11 @@ on:
         description: Optional exact source commit SHA; fail closed if the ref resolves elsewhere
         required: false
         default: ''
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/sync-k15-status-lab.yml
 
 permissions:
   contents: write
@@ -31,11 +36,24 @@ jobs:
           path: fork
           fetch-depth: 0
 
+      - name: Resolve source ref
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "ref=${{ inputs.source_ref }}" >> "$GITHUB_OUTPUT"
+            echo "expected=${{ inputs.expected_source_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+            echo "expected=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout primary VOROTEX repository
         uses: actions/checkout@v4
         with:
           repository: KostGame/vorotex-kb-profiles-and-macros2vibecoding
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ steps.source.outputs.ref }}
           path: source
           fetch-depth: 1
 
@@ -44,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           SOURCE_SHA="$(git -C "$GITHUB_WORKSPACE/source" rev-parse HEAD)"
-          EXPECTED="${{ inputs.expected_source_sha }}"
+          EXPECTED="${{ steps.source.outputs.expected }}"
           echo "Resolved source: $SOURCE_SHA"
           if [[ -n "$EXPECTED" && "$SOURCE_SHA" != "$EXPECTED" ]]; then
             echo "Expected source $EXPECTED but ref resolved to $SOURCE_SHA" >&2
@@ -64,9 +82,10 @@ jobs:
           set -euo pipefail
           SRC="$GITHUB_WORKSPACE/source/status-lab"
           DST="$GITHUB_WORKSPACE/fork/extensions/k15-status-lab"
-          mkdir -p "$DST/src/configurator" "$DST/configurator"
+          mkdir -p "$DST/src/configurator" "$DST/src/lighting-lab" "$DST/configurator" "$DST/lighting-lab"
 
           files=(
+            AssemblyInfo.cs
             ConfigToml.cs
             EventJournal.cs
             JournalStateNormalizer.cs
@@ -77,6 +96,7 @@ jobs:
             StateReducer.cs
             StatusLabApplicationContext.cs
             StatusLabConfig.cs
+            TrayIconFactory.cs
             Vorotex.K15.StatusLab.csproj
             WindowsNotificationPoller.cs
             codex-hook-logger.ps1
@@ -87,14 +107,27 @@ jobs:
             cp "$SRC/$file" "$DST/src/$file"
           done
 
+          lighting_files=(
+            LightingLabForm.cs
+            LightingLabSession.cs
+            Program.cs
+            README.md
+            Vorotex.K15.LightingLab.csproj
+          )
+
+          for file in "${lighting_files[@]}"; do
+            cp "$SRC/lighting-lab/$file" "$DST/src/lighting-lab/$file"
+          done
+
           cp "$SRC/configurator/index.html" "$DST/src/configurator/index.html"
           cp "$SRC/status-lab-config.example.toml" "$DST/src/status-lab-config.example.toml"
           cp "$SRC/configurator/index.html" "$DST/configurator/index.html"
           cp "$SRC/status-lab-config.example.toml" "$DST/status-lab-config.example.toml"
+          cp "$SRC/lighting-lab/README.md" "$DST/lighting-lab/README.md"
           cp "$SRC/LICENSE.md" "$DST/LICENSE.md"
 
           SOURCE_SHA="$(git -C "$GITHUB_WORKSPACE/source" rev-parse HEAD)"
-          SOURCE_REF="${{ inputs.source_ref }}"
+          SOURCE_REF="${{ steps.source.outputs.ref }}"
 
           cat > "$DST/provenance.json" <<EOF
           {
@@ -104,7 +137,7 @@ jobs:
             "sourceCommit": "$SOURCE_SHA",
             "protocolFoundation": "luftaquila/w910-webdriver",
             "mirrorPolicy": "curated-whitelist",
-            "distributionStatus": "preview",
+            "distributionStatus": "beta",
             "license": "GPL-3.0-only"
           }
           EOF
@@ -119,7 +152,7 @@ jobs:
           - Mirrored ref: $SOURCE_REF
           - Mirrored commit: $SOURCE_SHA
           - HID/protocol foundation: luftaquila/w910-webdriver
-          - Distribution status: preview
+          - Distribution status: beta / release-candidate track
           - Component license: GPL-3.0-only
 
           Development happens in the primary VOROTEX repository. Do not maintain an independent Status Lab implementation here.
@@ -157,16 +190,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ steps.publish.outputs.source_sha }}
-          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_REF: ${{ steps.source.outputs.ref }}
         run: |
           set -euo pipefail
-          TITLE="sync(k15-status-lab): update curated mirror"
+          TITLE="sync(k15-status-lab): update beta / RC mirror"
           BODY=$(cat <<EOF
           Curated Status Lab sync from the primary VOROTEX repository.
 
           - Source ref: \`$SOURCE_REF\`
           - Exact source commit: \`$SOURCE_SHA\`
+          - Distribution track: beta / release candidate
           - Mirror policy: explicit whitelist
+          - Includes Status Lab + Lighting Lab
           - Primary development stays in \`KostGame/vorotex-kb-profiles-and-macros2vibecoding\`
 
           Review this PR normally. Sync never commits directly to downstream \`main\` and does not rewrite fork-specific README/NOTICE documentation.
