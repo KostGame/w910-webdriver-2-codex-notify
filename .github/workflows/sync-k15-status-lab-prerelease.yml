@@ -1,0 +1,413 @@
+name: Sync K15 Status Lab prereleases
+
+on:
+  workflow_dispatch:
+    inputs:
+      primary_tag:
+        description: Optional primary prerelease tag; empty means latest status-lab-rc*
+        required: false
+        default: ''
+      expected_source_sha:
+        description: Optional exact source SHA; fail closed on mismatch
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - '.github/workflows/sync-k15-status-lab-prerelease.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/sync-k15-status-lab-prerelease.yml'
+  schedule:
+    - cron: '47 */6 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-k15-status-lab-prerelease
+  cancel-in-progress: false
+
+jobs:
+  mirror-build-release:
+    runs-on: windows-latest
+    env:
+      PRIMARY_REPO: KostGame/vorotex-kb-profiles-and-macros2vibecoding
+      DOWNSTREAM_REPO: KostGame/w910-webdriver-2-codex-notify
+      PRERELEASE_BRANCH: prerelease/k15-status-lab
+
+    steps:
+      - name: Checkout downstream main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: fork
+          fetch-depth: 0
+
+      - name: Resolve latest primary prerelease
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $requested = ''
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $requested = '${{ inputs.primary_tag }}'
+          }
+
+          if ([string]::IsNullOrWhiteSpace($requested)) {
+            $raw = gh api "repos/$env:PRIMARY_REPO/releases?per_page=30"
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to list primary releases.' }
+            $release = @(
+              $raw |
+                ConvertFrom-Json |
+                Where-Object { $_.prerelease -and -not $_.draft -and $_.tag_name -like 'status-lab-rc*' } |
+                Sort-Object { [DateTimeOffset]$_.published_at } -Descending
+            ) | Select-Object -First 1
+          }
+          else {
+            $raw = gh api "repos/$env:PRIMARY_REPO/releases/tags/$requested"
+            if ($LASTEXITCODE -ne 0) { throw "Primary release tag not found: $requested" }
+            $release = $raw | ConvertFrom-Json
+            if (-not $release.prerelease -or $release.draft) {
+              throw "Requested release is not a published prerelease: $requested"
+            }
+          }
+
+          if ($null -eq $release) { throw 'No published Status Lab prerelease was found.' }
+          if ($release.tag_name -notlike 'status-lab-rc*') {
+            throw "Unexpected prerelease tag: $($release.tag_name)"
+          }
+          if ([string]::IsNullOrWhiteSpace($release.target_commitish)) {
+            throw 'Primary prerelease has no target_commitish.'
+          }
+
+          "tag=$($release.tag_name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "target_ref=$($release.target_commitish)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "primary_url=$($release.html_url)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "primary_title=$($release.name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          Write-Host "Primary prerelease: $($release.tag_name)"
+          Write-Host "Primary target: $($release.target_commitish)"
+
+      - name: Checkout exact primary prerelease source
+        uses: actions/checkout@v4
+        with:
+          repository: KostGame/vorotex-kb-profiles-and-macros2vibecoding
+          ref: ${{ steps.release.outputs.target_ref }}
+          path: source
+          fetch-depth: 1
+
+      - name: Verify exact primary source
+        id: source
+        shell: pwsh
+        run: |
+          $sourceSha = (git -C source rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') {
+            throw 'Unable to resolve exact primary source SHA.'
+          }
+
+          $target = '${{ steps.release.outputs.target_ref }}'
+          if ($target -match '^[0-9a-f]{40}$' -and $sourceSha -ne $target) {
+            throw "Primary release target mismatch: release=$target checkout=$sourceSha"
+          }
+
+          $expected = ''
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $expected = '${{ inputs.expected_source_sha }}'
+          }
+          if (-not [string]::IsNullOrWhiteSpace($expected) -and $sourceSha -ne $expected) {
+            throw "Expected source $expected but resolved $sourceSha"
+          }
+
+          "sha=$sourceSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Exact primary source SHA: $sourceSha"
+
+      - name: Guard public prerelease source subtree
+        shell: pwsh
+        run: |
+          $src = Join-Path $env:GITHUB_WORKSPACE 'source/status-lab'
+          $required = @(
+            'Vorotex.K15.StatusLab.csproj',
+            'control-center/Vorotex.K15.ControlCenter.csproj',
+            'lighting-lab/Vorotex.K15.LightingLab.csproj',
+            'hid-research-lab/Vorotex.K15.HidResearchLab.csproj',
+            'shared/StatusTrayIpc.cs',
+            'sleep-sweep/SleepSweepSession.cs',
+            'sleep-sweep/SleepSweepForm.cs',
+            'vendor-static-lab/VendorPeAnalyzer.cs',
+            'LICENSE.md'
+          )
+          foreach ($rel in $required) {
+            if (-not (Test-Path -LiteralPath (Join-Path $src $rel))) {
+              throw "Required prerelease source is missing: $rel"
+            }
+          }
+
+          $forbiddenNames = @('auth.json', '.env', 'id_rsa', 'id_ed25519')
+          $forbiddenExtensions = @('.pfx', '.p12', '.pem', '.key', '.sqlite', '.db')
+          $files = Get-ChildItem -LiteralPath $src -Recurse -File
+          foreach ($file in $files) {
+            if ($forbiddenNames -contains $file.Name.ToLowerInvariant()) {
+              throw "Forbidden file in public prerelease subtree: $($file.FullName)"
+            }
+            if ($forbiddenExtensions -contains $file.Extension.ToLowerInvariant()) {
+              throw "Forbidden file type in public prerelease subtree: $($file.FullName)"
+            }
+            if ($file.Length -gt 5MB) {
+              throw "Unexpected large file in public prerelease subtree: $($file.FullName)"
+            }
+          }
+
+      - name: Check downstream prerelease freshness
+        id: freshness
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $upToDate = $false
+          if ('${{ github.event_name }}' -ne 'push') {
+            $old = $ErrorActionPreference
+            try {
+              $ErrorActionPreference = 'Continue'
+              $raw = gh release view $env:RELEASE_TAG --repo $env:DOWNSTREAM_REPO --json body,isPrerelease 2>$null
+              $exit = $LASTEXITCODE
+            }
+            finally {
+              $ErrorActionPreference = $old
+            }
+
+            if ($exit -eq 0 -and -not [string]::IsNullOrWhiteSpace($raw)) {
+              $existing = $raw | ConvertFrom-Json
+              if ($existing.isPrerelease -and $existing.body -match [regex]::Escape($env:SOURCE_SHA)) {
+                $upToDate = $true
+              }
+            }
+          }
+
+          "up_to_date=$($upToDate.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Downstream prerelease already mirrors this source: $upToDate"
+
+      - name: Prepare exact prerelease source mirror
+        if: steps.freshness.outputs.up_to_date != 'true' || github.event_name == 'pull_request'
+        id: mirror
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          PRIMARY_URL: ${{ steps.release.outputs.primary_url }}
+        run: |
+          Set-Location fork
+
+          $refspec = "+refs/heads/$($env:PRERELEASE_BRANCH):refs/remotes/origin/$($env:PRERELEASE_BRANCH)"
+          $old = $ErrorActionPreference
+          try {
+            $ErrorActionPreference = 'Continue'
+            git fetch origin $refspec 2>&1 | Out-Host
+          }
+          finally {
+            $ErrorActionPreference = $old
+          }
+
+          git checkout -B $env:PRERELEASE_BRANCH origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to prepare prerelease branch from downstream main.' }
+
+          $dst = Join-Path (Get-Location) 'extensions/k15-status-lab'
+          if (Test-Path -LiteralPath $dst) {
+            Remove-Item -LiteralPath $dst -Recurse -Force
+          }
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'source/status-lab') -Destination $dst -Recurse
+
+          $provenance = [ordered]@{
+            sourceRepository = $env:PRIMARY_REPO
+            sourcePath = 'status-lab'
+            sourceReleaseTag = $env:RELEASE_TAG
+            sourceReleaseUrl = $env:PRIMARY_URL
+            sourceCommit = $env:SOURCE_SHA
+            protocolFoundation = 'luftaquila/w910-webdriver'
+            mirrorPolicy = 'prerelease-exact-public-subtree-with-safety-guard'
+            distributionStatus = 'prerelease'
+            license = 'GPL-3.0-only'
+          } | ConvertTo-Json
+          $provenance | Set-Content -Encoding UTF8 (Join-Path $dst 'provenance.json')
+
+          @"
+          # Source and lineage
+
+          This branch mirrors a published VOROTEX K15 Status Lab prerelease for downstream testing and download.
+
+          - Primary repository: $env:PRIMARY_REPO
+          - Primary release: $env:RELEASE_TAG
+          - Primary release URL: $env:PRIMARY_URL
+          - Exact primary source commit: $env:SOURCE_SHA
+          - Mirror policy: exact public status-lab subtree with secret/size safety guards
+          - Distribution status: prerelease
+          - Component license: GPL-3.0-only
+
+          This prerelease branch is distribution-only. Development remains in the primary VOROTEX repository.
+          It must not be merged into downstream main merely because a prerelease was published.
+          "@ | Set-Content -Encoding UTF8 (Join-Path $dst 'SOURCE.md')
+
+          git add extensions/k15-status-lab
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git diff --cached --quiet
+          $hasChanges = ($LASTEXITCODE -ne 0)
+          if ($hasChanges) {
+            git commit -m "sync(k15-status-lab): prerelease $env:RELEASE_TAG @ $($env:SOURCE_SHA.Substring(0,12))"
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to commit prerelease mirror.' }
+          }
+
+          $mirrorSha = (git rev-parse HEAD).Trim()
+          "sha=$mirrorSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          if ('${{ github.event_name }}' -ne 'pull_request') {
+            git push --force-with-lease origin $env:PRERELEASE_BRANCH
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to publish prerelease source branch.' }
+          }
+
+      - name: Setup .NET 8
+        if: steps.freshness.outputs.up_to_date != 'true' || github.event_name == 'pull_request'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish four prerelease applications
+        if: steps.freshness.outputs.up_to_date != 'true' || github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $root = 'fork/extensions/k15-status-lab'
+          dotnet publish "$root/Vorotex.K15.StatusLab.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o 'artifacts/status-tray'
+          if ($LASTEXITCODE -ne 0) { throw 'Status Tray publish failed.' }
+
+          dotnet publish "$root/control-center/Vorotex.K15.ControlCenter.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o 'artifacts/control-center'
+          if ($LASTEXITCODE -ne 0) { throw 'Control Center publish failed.' }
+
+          dotnet publish "$root/lighting-lab/Vorotex.K15.LightingLab.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o 'artifacts/lighting-lab'
+          if ($LASTEXITCODE -ne 0) { throw 'Lighting Lab publish failed.' }
+
+          dotnet publish "$root/hid-research-lab/Vorotex.K15.HidResearchLab.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o 'artifacts/hid-research-lab'
+          if ($LASTEXITCODE -ne 0) { throw 'HID Research Lab publish failed.' }
+
+      - name: Verify and package four independent ZIPs
+        if: steps.freshness.outputs.up_to_date != 'true' || github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $packages = @(
+            @{ Dir='artifacts/status-tray'; Exe='Vorotex.K15.StatusTray.exe'; Zip='Vorotex.K15.StatusTray-win-x64.zip' },
+            @{ Dir='artifacts/control-center'; Exe='Vorotex.K15.ControlCenter.exe'; Zip='Vorotex.K15.ControlCenter-win-x64.zip' },
+            @{ Dir='artifacts/lighting-lab'; Exe='Vorotex.K15.LightingLab.exe'; Zip='Vorotex.K15.LightingLab-win-x64.zip' },
+            @{ Dir='artifacts/hid-research-lab'; Exe='Vorotex.K15.HidResearchLab.exe'; Zip='Vorotex.K15.HidResearchLab-win-x64.zip' }
+          )
+
+          $sumLines = @()
+          foreach ($package in $packages) {
+            $exePath = Join-Path $package.Dir $package.Exe
+            if (-not (Test-Path -LiteralPath $exePath)) {
+              throw "Missing prerelease executable: $exePath"
+            }
+
+            if (Test-Path -LiteralPath $package.Zip) {
+              Remove-Item -LiteralPath $package.Zip -Force
+            }
+            Compress-Archive -Path "$($package.Dir)/*" -DestinationPath $package.Zip -CompressionLevel Optimal
+            $hash = (Get-FileHash -LiteralPath $package.Zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            $sumLines += "$hash  $($package.Zip)"
+          }
+
+          $sumLines | Set-Content -Encoding ascii 'SHA256SUMS.txt'
+
+      - name: Upload prerelease workflow artifacts
+        if: steps.freshness.outputs.up_to_date != 'true' || github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: k15-${{ steps.release.outputs.tag }}-four-apps
+          path: |
+            Vorotex.K15.StatusTray-win-x64.zip
+            Vorotex.K15.ControlCenter-win-x64.zip
+            Vorotex.K15.LightingLab-win-x64.zip
+            Vorotex.K15.HidResearchLab-win-x64.zip
+            SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish downstream prerelease
+        if: github.event_name != 'pull_request' && steps.freshness.outputs.up_to_date != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          PRIMARY_URL: ${{ steps.release.outputs.primary_url }}
+          PRIMARY_TITLE: ${{ steps.release.outputs.primary_title }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          MIRROR_SHA: ${{ steps.mirror.outputs.sha }}
+        run: |
+          Set-Location fork
+
+          git tag -f $env:RELEASE_TAG $env:MIRROR_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to create downstream prerelease tag.' }
+          git push origin "refs/tags/$env:RELEASE_TAG" --force
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to publish downstream prerelease tag.' }
+
+          $notesPath = Join-Path $env:RUNNER_TEMP 'k15-prerelease-notes.md'
+          @"
+          # $env:PRIMARY_TITLE
+
+          Downstream mirror of the published VOROTEX Status Lab prerelease.
+
+          - Primary release: $env:PRIMARY_URL
+          - Primary source commit: $env:SOURCE_SHA
+          - Downstream mirror commit: $env:MIRROR_SHA
+          - Stable status-lab-latest is intentionally unchanged until the candidate is accepted into primary main.
+
+          ## Downloads
+
+          - Vorotex.K15.StatusTray-win-x64.zip
+          - Vorotex.K15.ControlCenter-win-x64.zip
+          - Vorotex.K15.LightingLab-win-x64.zip
+          - Vorotex.K15.HidResearchLab-win-x64.zip
+          - SHA256SUMS.txt
+          "@ | Set-Content -Encoding UTF8 $notesPath
+
+          $old = $ErrorActionPreference
+          try {
+            $ErrorActionPreference = 'Continue'
+            gh release view $env:RELEASE_TAG --repo $env:DOWNSTREAM_REPO *> $null
+            $exists = ($LASTEXITCODE -eq 0)
+          }
+          finally {
+            $ErrorActionPreference = $old
+          }
+
+          if ($exists) {
+            gh release upload $env:RELEASE_TAG `
+              '../Vorotex.K15.StatusTray-win-x64.zip' `
+              '../Vorotex.K15.ControlCenter-win-x64.zip' `
+              '../Vorotex.K15.LightingLab-win-x64.zip' `
+              '../Vorotex.K15.HidResearchLab-win-x64.zip' `
+              '../SHA256SUMS.txt' `
+              --repo $env:DOWNSTREAM_REPO --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to refresh downstream prerelease assets.' }
+            gh release edit $env:RELEASE_TAG --repo $env:DOWNSTREAM_REPO --target $env:MIRROR_SHA --title "$env:PRIMARY_TITLE (downstream mirror)" --notes-file $notesPath --prerelease
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to refresh downstream prerelease metadata.' }
+          }
+          else {
+            gh release create $env:RELEASE_TAG `
+              '../Vorotex.K15.StatusTray-win-x64.zip' `
+              '../Vorotex.K15.ControlCenter-win-x64.zip' `
+              '../Vorotex.K15.LightingLab-win-x64.zip' `
+              '../Vorotex.K15.HidResearchLab-win-x64.zip' `
+              '../SHA256SUMS.txt' `
+              --repo $env:DOWNSTREAM_REPO --target $env:MIRROR_SHA --title "$env:PRIMARY_TITLE (downstream mirror)" --notes-file $notesPath --prerelease
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to create downstream prerelease.' }
+          }
+
+      - name: Report no-op
+        if: github.event_name != 'pull_request' && steps.freshness.outputs.up_to_date == 'true'
+        shell: pwsh
+        run: |
+          "Primary prerelease ${{ steps.release.outputs.tag }} @ ${{ steps.source.outputs.sha }} is already mirrored downstream." |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
