@@ -1,10 +1,11 @@
 {
   "sourceRepository": "KostGame/vorotex-kb-profiles-and-macros2vibecoding",
   "sourcePath": "status-lab",
-  "sourceRef": "main",
-  "sourceCommit": "404e2be9474a51ded10c98d13de50ef3ae480e29",
+  "sourceReleaseTag": "status-lab-rc2",
+  "sourceReleaseUrl": "https://github.com/KostGame/vorotex-kb-profiles-and-macros2vibecoding/releases/tag/status-lab-rc2",
+  "sourceCommit": "235ed1fdff8e1e5fc801807d717b4ee5983ca86a",
   "protocolFoundation": "luftaquila/w910-webdriver",
-  "mirrorPolicy": "curated-whitelist",
-  "distributionStatus": "release-candidate",
+  "mirrorPolicy": "prerelease-exact-public-subtree-with-safety-guard",
+  "distributionStatus": "prerelease",
   "license": "GPL-3.0-only"
 }
