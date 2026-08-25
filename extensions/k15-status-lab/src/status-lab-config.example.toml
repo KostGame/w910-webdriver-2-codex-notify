@@ -1,24 +1,23 @@
 # VOROTEX K15 Status Lab
 #
-# Цвет задаёт аппаратный профиль. Состояния меняют только эффект.
-# NORMAL всегда восстанавливает точный baseline, считанный с клавиатуры.
+# Цвета принадлежат аппаратным профилям A/B. NORMAL восстанавливает exact baseline.
+# palette = "profile"      -> цвет физически активного профиля
+# palette = "profile_pair" -> два основных цвета: A затем B
 #
-# Allowed notifier effects:
-#   constant
-#   flowing_water
-#   mono_water
-#   single_color_breathing
-#   off
-#
-# Только эффекты с контролируемой палитрой 1-2 цвета разрешены.
-# cycle_breathing, tetris_blocks, neon и ambilight не допускаются notifier-валидатором.
-# Low-level HID mapping для них остаётся только для research/forensics.
+# Production notifier modes:
+# constant, flowing_water, single_color_breathing, cycle_breathing, off.
+# Horse race / native 0x83, Tetris, Neon и Ambilight остаются в K15 Lighting Lab.
+# Status Lab НИКОГДА программно не переключает hardware Profile A/B.
 
-schema_version = 2
+schema_version = 3
 
 [device]
-# rgb доказан на текущей физической K15; grb оставлен для совместимости.
 wire_color_order = "rgb"
+
+[behavior]
+# Safety fallback: DONE_PENDING_ATTENTION не должен мигать бесконечно.
+# 0 = отключить fallback; default = 15 секунд.
+done_attention_timeout_seconds = 15
 
 [profiles.A]
 # RED / TOOLS-AUTH
@@ -29,59 +28,75 @@ color = "#FF0000"
 color = "#0000FF"
 
 [states.running]
-# RUNNING: спокойное движение в цвете активного профиля.
+# Работа Codex: спокойный Flowing Water в цвете активного профиля.
 enabled = true
-effect = "mono_water"
+effect = "flowing_water"
+palette = "profile"
 brightness = 4
 speed = 3
 direction = 0
 duration_seconds = 0
 
 [states.waiting]
-# WAITING: заметное ожидание в том же цвете.
+# Запрос/ожидание: быстрое мигание, сразу заметно.
 enabled = true
 effect = "single_color_breathing"
+palette = "profile"
 brightness = 6
-speed = 6
+speed = 7
 direction = 0
 duration_seconds = 0
 
 [states.done]
-# DONE: ограниченный attention-effect; затем exact baseline.
+# После STOP-сигнала: медленное напоминание. Semantic timeout задаётся в [behavior].
 enabled = true
 effect = "single_color_breathing"
-brightness = 6
-speed = 3
-direction = 0
-duration_seconds = 10
-
-[states.error]
-# ERROR: только high-confidence semantic error.
-enabled = true
-effect = "single_color_breathing"
-brightness = 6
-speed = 7
-direction = 0
-duration_seconds = 15
-
-[profile_switch]
-# Короткий ОДНОЦВЕТНЫЙ overlay в цвете НОВОГО профиля, затем resume state.
-enabled = true
-effect = "flowing_water"
+palette = "profile"
 brightness = 6
 speed = 5
 direction = 0
-duration_seconds = 2
+duration_seconds = 0
+
+[states.error]
+# Зарезервировано до появления high-confidence semantic ERROR source.
+enabled = false
+effect = "single_color_breathing"
+palette = "profile"
+brightness = 6
+speed = 7
+direction = 0
+duration_seconds = 0
+
+[profile_switch]
+# У K15 есть собственная тройная flash-анимация при физическом A/B switch.
+# Поэтому default 4s оставляет наш Flowing Water видимым после штатных flashes.
+enabled = true
+effect = "flowing_water"
+palette = "profile"
+brightness = 5
+speed = 5
+direction = 0
+duration_seconds = 4
+
+[stop_signal]
+# Момент Stop: RED <-> BLUE, затем states.done.
+enabled = true
+effect = "cycle_breathing"
+palette = "profile_pair"
+brightness = 6
+speed = 7
+direction = 0
+duration_seconds = 3
 
 [activation]
-# Выключено по умолчанию: никакой красно-синей дискотеки при старте notifier.
-enabled = false
-effect = "mono_water"
-brightness = 4
-speed = 4
+# Включение RGB-индикации: Flowing Water двумя основными цветами A/B.
+enabled = true
+effect = "flowing_water"
+palette = "profile_pair"
+brightness = 5
+speed = 5
 direction = 0
-duration_seconds = 2
+duration_seconds = 3
 
 [effect_lab]
-# Время одного теста перед автоматическим exact restore.
 test_duration_seconds = 4

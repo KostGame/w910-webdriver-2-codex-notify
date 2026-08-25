@@ -5,6 +5,12 @@ namespace Vorotex.K15.StatusLab;
 
 internal static class ConfigToml
 {
+    private static readonly HashSet<string> KnownSections = new(StringComparer.Ordinal)
+    {
+        "device", "behavior", "profiles.A", "profiles.B", "states.running", "states.waiting",
+        "states.done", "states.error", "profile_switch", "stop_signal", "activation", "effect_lab"
+    };
+
     public static StatusLabConfig Parse(string text)
     {
         var config = StatusLabConfig.CreateDefault();
@@ -42,23 +48,22 @@ internal static class ConfigToml
         }
 
         config.Validate();
+        config.NormalizeLegacySchema();
         return config;
     }
 
     public static string Serialize(StatusLabConfig config)
     {
+        config.NormalizeLegacySchema();
         config.Validate();
         var b = new StringBuilder();
         b.AppendLine("# VOROTEX K15 Status Lab");
-        b.AppendLine("#");
-        b.AppendLine("# Цвет задаёт аппаратный профиль. Состояния меняют только эффект.");
-        b.AppendLine("# NORMAL всегда восстанавливает точный baseline, считанный с клавиатуры.");
-        b.AppendLine("#");
-        b.AppendLine("# Allowed notifier effects: constant, flowing_water, mono_water,");
-        b.AppendLine("#                           single_color_breathing, off");
-        b.AppendLine("# Только эффекты с контролируемой палитрой 1-2 цвета разрешены.");
-        b.AppendLine("# cycle_breathing, tetris_blocks, neon и ambilight оставлены только в HID research layer");
-        b.AppendLine("# и отклоняются валидатором пользовательского config.toml.");
+        b.AppendLine("# Цвета принадлежат аппаратным профилям A/B. NORMAL восстанавливает exact baseline.");
+        b.AppendLine("# palette = profile      -> цвет физически активного профиля");
+        b.AppendLine("# palette = profile_pair -> два основных цвета: A затем B");
+        b.AppendLine("# Production notifier modes: constant, flowing_water, single_color_breathing,");
+        b.AppendLine("# cycle_breathing, off. Horse race, Tetris, Neon, Ambilight остаются в Lighting Lab.");
+        b.AppendLine("# Status Lab НИКОГДА программно не переключает hardware Profile A/B.");
         b.AppendLine();
         b.AppendLine($"schema_version = {config.SchemaVersion}");
         b.AppendLine();
@@ -66,33 +71,32 @@ internal static class ConfigToml
         b.AppendLine("# rgb доказан на текущей физической K15; grb оставлен для совместимости.");
         b.AppendLine($"wire_color_order = \"{config.WireColorOrder.ToString().ToLowerInvariant()}\"");
         b.AppendLine();
+        b.AppendLine("[behavior]");
+        b.AppendLine("# Safety fallback: DONE не должен мигать бесконечно даже если toast correlation не сработал.");
+        b.AppendLine("# 0 = отключить fallback timeout; рекомендуется 15..60 секунд.");
+        b.AppendLine($"done_attention_timeout_seconds = {Format(config.DoneAttentionTimeoutSeconds)}");
+        b.AppendLine();
         WriteProfile(b, "A", config.Profiles.A, "RED / TOOLS-AUTH");
         WriteProfile(b, "B", config.Profiles.B, "BLUE / MAIN-VIBECODING");
-        WriteEffect(b, "states.running", config.States.Running, "RUNNING: спокойное движение в цвете активного профиля.");
-        WriteEffect(b, "states.waiting", config.States.Waiting, "WAITING: заметное ожидание в том же цвете.");
-        WriteEffect(b, "states.done", config.States.Done, "DONE: ограниченный attention-effect; затем exact baseline.");
-        WriteEffect(b, "states.error", config.States.Error, "ERROR: зарезервирован для high-confidence semantic error.");
-        WriteEffect(b, "profile_switch", config.ProfileSwitch, "Короткий одноцветный overlay в цвете НОВОГО профиля, затем resume state.");
-        WriteEffect(b, "activation", config.ActivationSignal, "Сигнал включения RGB notifier. По умолчанию выключен.");
+        WriteEffect(b, "states.running", config.States.Running,
+            "RUNNING: Flowing Water в цвете активного профиля.");
+        WriteEffect(b, "states.waiting", config.States.Waiting,
+            "WAITING: быстрое Single-color breathing, speed 7.");
+        WriteEffect(b, "states.done", config.States.Done,
+            "DONE_PENDING_ATTENTION: Single-color breathing speed 5; semantic timeout задаётся в [behavior].");
+        WriteEffect(b, "states.error", config.States.Error,
+            "ERROR зарезервирован для high-confidence semantic source; default disabled.");
+        WriteEffect(b, "profile_switch", config.ProfileSwitch,
+            "Flowing Water после физического переключения. У K15 есть собственная тройная flash-анимация; duration 4s оставляет наш сигнал видимым после неё.");
+        WriteEffect(b, "stop_signal", config.StopSignal,
+            "Момент STOP: короткий Cycle breathing RED <-> BLUE, затем states.done.");
+        WriteEffect(b, "activation", config.ActivationSignal,
+            "Включение RGB-индикации: короткий Flowing Water двумя основными цветами A/B.");
         b.AppendLine("[effect_lab]");
-        b.AppendLine("# Время одного временного теста эффекта перед автоматическим восстановлением.");
+        b.AppendLine("# Встроенный tray Effect Test остаётся коротким smoke. Полные исследования делаются в Lighting Lab.");
         b.AppendLine($"test_duration_seconds = {Format(config.EffectLabDurationSeconds)}");
         return b.ToString();
     }
-
-    private static readonly HashSet<string> KnownSections = new(StringComparer.Ordinal)
-    {
-        "device",
-        "profiles.A",
-        "profiles.B",
-        "states.running",
-        "states.waiting",
-        "states.done",
-        "states.error",
-        "profile_switch",
-        "activation",
-        "effect_lab"
-    };
 
     private static void Apply(StatusLabConfig config, string section, string key, string value)
     {
@@ -112,12 +116,19 @@ internal static class ConfigToml
             return;
         }
 
+        if (section == "behavior")
+        {
+            if (key != "done_attention_timeout_seconds")
+                throw new InvalidDataException($"unknown key '{section}.{key}'");
+            config.DoneAttentionTimeoutSeconds = ParseDouble(value);
+            return;
+        }
+
         if (section is "profiles.A" or "profiles.B")
         {
             if (key != "color")
                 throw new InvalidDataException($"unknown key '{section}.{key}'");
-            var profile = section.EndsWith(".A", StringComparison.Ordinal) ? config.Profiles.A : config.Profiles.B;
-            profile.Color = ParseString(value);
+            (section.EndsWith(".A", StringComparison.Ordinal) ? config.Profiles.A : config.Profiles.B).Color = ParseString(value);
             return;
         }
 
@@ -136,32 +147,21 @@ internal static class ConfigToml
             "states.done" => config.States.Done,
             "states.error" => config.States.Error,
             "profile_switch" => config.ProfileSwitch,
+            "stop_signal" => config.StopSignal,
             "activation" => config.ActivationSignal,
             _ => throw new InvalidDataException($"unknown section [{section}]")
         };
 
         switch (key)
         {
-            case "enabled":
-                effect.Enabled = ParseBool(value);
-                break;
-            case "effect":
-                effect.Mode = StatusLabConfig.ParseModeName(ParseString(value));
-                break;
-            case "brightness":
-                effect.Brightness = ParseInt(value);
-                break;
-            case "speed":
-                effect.Speed = ParseInt(value);
-                break;
-            case "direction":
-                effect.Direction = ParseInt(value);
-                break;
-            case "duration_seconds":
-                effect.DurationSeconds = ParseDouble(value);
-                break;
-            default:
-                throw new InvalidDataException($"unknown key '{section}.{key}'");
+            case "enabled": effect.Enabled = ParseBool(value); break;
+            case "effect": effect.Mode = StatusLabConfig.ParseModeName(ParseString(value)); break;
+            case "palette": effect.Palette = StatusLabConfig.ParsePaletteName(ParseString(value)); break;
+            case "brightness": effect.Brightness = ParseInt(value); break;
+            case "speed": effect.Speed = ParseInt(value); break;
+            case "direction": effect.Direction = ParseInt(value); break;
+            case "duration_seconds": effect.DurationSeconds = ParseDouble(value); break;
+            default: throw new InvalidDataException($"unknown key '{section}.{key}'");
         }
     }
 
@@ -179,10 +179,11 @@ internal static class ConfigToml
         b.AppendLine($"# {hint}");
         b.AppendLine($"enabled = {effect.Enabled.ToString().ToLowerInvariant()}");
         b.AppendLine($"effect = \"{StatusLabConfig.ModeName(effect.Mode)}\"");
+        b.AppendLine($"palette = \"{StatusLabConfig.PaletteName(effect.Palette)}\"");
         b.AppendLine($"brightness = {effect.Brightness}      # 1..6");
         b.AppendLine($"speed = {effect.Speed}               # 1..7");
         b.AppendLine($"direction = {effect.Direction}           # 0..1");
-        b.AppendLine($"duration_seconds = {Format(effect.DurationSeconds)}  # 0 = до смены semantic state");
+        b.AppendLine($"duration_seconds = {Format(effect.DurationSeconds)}");
         b.AppendLine();
     }
 
@@ -193,23 +194,10 @@ internal static class ConfigToml
         for (var i = 0; i < line.Length; i++)
         {
             var c = line[i];
-            if (escaped)
-            {
-                escaped = false;
-                continue;
-            }
-            if (c == '\\' && quoted)
-            {
-                escaped = true;
-                continue;
-            }
-            if (c == '"')
-            {
-                quoted = !quoted;
-                continue;
-            }
-            if (c == '#' && !quoted)
-                return line[..i];
+            if (escaped) { escaped = false; continue; }
+            if (c == '\\' && quoted) { escaped = true; continue; }
+            if (c == '"') { quoted = !quoted; continue; }
+            if (c == '#' && !quoted) return line[..i];
         }
         return line;
     }
@@ -230,13 +218,11 @@ internal static class ConfigToml
 
     private static int ParseInt(string value) =>
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : throw new FormatException($"invalid integer '{value}'");
+            ? parsed : throw new FormatException($"invalid integer '{value}'");
 
     private static double ParseDouble(string value) =>
         double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : throw new FormatException($"invalid number '{value}'");
+            ? parsed : throw new FormatException($"invalid number '{value}'");
 
     private static WireColorOrder ParseWireOrder(string value) => value.ToLowerInvariant() switch
     {
@@ -246,7 +232,6 @@ internal static class ConfigToml
     };
 
     private static string Format(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
-
     private static void Fail(int zeroBasedLine, string message) =>
         throw new InvalidDataException($"config.toml line {zeroBasedLine + 1}: {message}");
 }
