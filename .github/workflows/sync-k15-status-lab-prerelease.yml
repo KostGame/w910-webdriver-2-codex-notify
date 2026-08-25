@@ -175,6 +175,7 @@ jobs:
               $ErrorActionPreference = 'Continue'
               $raw = gh release view $env:RELEASE_TAG --repo $env:DOWNSTREAM_REPO --json body,isPrerelease 2>$null
               $exit = $LASTEXITCODE
+              $global:LASTEXITCODE = 0
             }
             finally {
               $ErrorActionPreference = $old
@@ -185,6 +186,9 @@ jobs:
               if ($existing.isPrerelease -and $existing.body -match [regex]::Escape($env:SOURCE_SHA)) {
                 $upToDate = $true
               }
+            }
+            elseif ($exit -ne 0) {
+              Write-Host "Downstream prerelease $env:RELEASE_TAG does not exist yet or is not readable; treating it as stale."
             }
           }
 
@@ -377,6 +381,7 @@ jobs:
             $ErrorActionPreference = 'Continue'
             gh release view $env:RELEASE_TAG --repo $env:DOWNSTREAM_REPO *> $null
             $exists = ($LASTEXITCODE -eq 0)
+            $global:LASTEXITCODE = 0
           }
           finally {
             $ErrorActionPreference = $old
