@@ -8,7 +8,8 @@ on:
       - .github/workflows/sync-k15-status-lab.yml
   push:
     branches:
-      - integration/k15-status-lab-initial
+      - main
+      - sync/k15-status-lab
     paths:
       - extensions/k15-status-lab/**
       - .github/workflows/k15-status-lab-ci.yml
@@ -33,9 +34,17 @@ jobs:
         shell: pwsh
         run: dotnet build extensions/k15-status-lab/src/Vorotex.K15.StatusLab.csproj -c Release
 
-      - name: Publish portable win-x64 build
+      - name: Build mirrored Lighting Lab
+        shell: pwsh
+        run: dotnet build extensions/k15-status-lab/src/lighting-lab/Vorotex.K15.LightingLab.csproj -c Release
+
+      - name: Publish portable Status Lab
         shell: pwsh
         run: dotnet publish extensions/k15-status-lab/src/Vorotex.K15.StatusLab.csproj -c Release -r win-x64 -o artifacts/k15-status-lab
+
+      - name: Publish portable Lighting Lab
+        shell: pwsh
+        run: dotnet publish extensions/k15-status-lab/src/lighting-lab/Vorotex.K15.LightingLab.csproj -c Release -r win-x64 -o artifacts/k15-lighting-lab
 
       - name: Verify bundled user assets
         shell: pwsh
@@ -45,7 +54,8 @@ jobs:
             'artifacts/k15-status-lab/status-lab-config.example.toml',
             'artifacts/k15-status-lab/configurator/index.html',
             'artifacts/k15-status-lab/codex-hook-logger.ps1',
-            'artifacts/k15-status-lab/install-codex-hooks.ps1'
+            'artifacts/k15-status-lab/install-codex-hooks.ps1',
+            'artifacts/k15-lighting-lab/Vorotex.K15.LightingLab.exe'
           )
           foreach ($path in $required) {
             if (-not (Test-Path $path)) { throw "Missing publish asset: $path" }
@@ -59,3 +69,5 @@ jobs:
           if ($p.sourcePath -ne 'status-lab') { throw 'Unexpected source path' }
           if ($p.sourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'Invalid source commit SHA' }
           if ($p.protocolFoundation -ne 'luftaquila/w910-webdriver') { throw 'Unexpected protocol foundation' }
+          if ($p.license -ne 'GPL-3.0-only') { throw 'Unexpected component license' }
+          if ($p.distributionStatus -notin @('beta', 'release-candidate')) { throw 'Unexpected distribution status' }
