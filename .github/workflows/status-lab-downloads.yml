@@ -2,6 +2,10 @@ name: Build Status Lab downloads
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'extensions/k15-status-lab/**'
+      - '.github/workflows/status-lab-downloads.yml'
   push:
     branches:
       - main
@@ -13,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: status-lab-downloads
+  group: status-lab-downloads-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -118,6 +122,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish rolling latest release
+        if: github.event_name != 'pull_request'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -155,7 +160,7 @@ jobs:
           }
 
       - name: Publish immutable RC1 release when first available
-        if: ${{ hashFiles('extensions/k15-status-lab/README-RC1.md') != '' }}
+        if: github.event_name != 'pull_request' && hashFiles('extensions/k15-status-lab/README-RC1.md') != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
