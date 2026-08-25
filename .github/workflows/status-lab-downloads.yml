@@ -133,23 +133,32 @@ jobs:
           git tag -f $tag $env:GITHUB_SHA
           git push origin "refs/tags/$tag" --force
 
-          $notes = @"
-          Automated rolling Windows build from the curated Status Lab mirror.
+          $notes = @(
+            'Automated rolling Windows build from the curated Status Lab mirror.'
+            ''
+            "- Downstream commit: $env:GITHUB_SHA"
+            "- Primary source commit: $env:SOURCE_SHA"
+            "- Distribution status: $env:DIST_STATUS"
+            '- Package contains Status Lab, Lighting Lab, TOML/configurator assets, hook helpers, provenance and build metadata.'
+            ''
+            'This rolling release is updated whenever accepted Status Lab source changes reach downstream main.'
+          ) -join [Environment]::NewLine
 
-          - Downstream commit: `$env:GITHUB_SHA`
-          - Primary source commit: `$env:SOURCE_SHA`
-          - Distribution status: `$env:DIST_STATUS`
-          - Package contains Status Lab, Lighting Lab, TOML/configurator assets, hook helpers, provenance and build metadata.
+          gh release view $tag --json tagName *> $null
+          $releaseExists = ($LASTEXITCODE -eq 0)
 
-          This rolling release is updated whenever accepted Status Lab source changes reach downstream `main`.
-          "@
-
-          if (gh release view $tag *> $null) {
+          if ($releaseExists) {
             gh release upload $tag `
               'VOROTEX-K15-Status-Lab-latest-win-x64.zip' `
               'VOROTEX-K15-Status-Lab-latest-win-x64.sha256' `
               --clobber
-            gh release edit $tag --title 'VOROTEX K15 Status Lab - Latest automated build' --notes $notes
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to upload rolling release assets' }
+
+            gh release edit $tag `
+              --target $env:GITHUB_SHA `
+              --title 'VOROTEX K15 Status Lab - Latest automated build' `
+              --notes $notes
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to update rolling release metadata' }
           } else {
             gh release create $tag `
               'VOROTEX-K15-Status-Lab-latest-win-x64.zip' `
@@ -157,6 +166,7 @@ jobs:
               --target $env:GITHUB_SHA `
               --title 'VOROTEX K15 Status Lab - Latest automated build' `
               --notes $notes
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to create rolling release' }
           }
 
       - name: Publish immutable RC1 release when first available
@@ -166,16 +176,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = 'status-lab-rc1'
-          if (gh release view $tag *> $null) {
+
+          gh release view $tag --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) {
             Write-Host 'RC1 release already exists; leaving it immutable.'
             exit 0
           }
 
-          git tag $tag $env:GITHUB_SHA
-          git push origin "refs/tags/$tag"
+          $remote = git ls-remote origin "refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to inspect RC1 tag state' }
+
+          if ($remote) {
+            $remoteSha = ($remote -split '\s+')[0]
+            if ($remoteSha -ne $env:GITHUB_SHA) {
+              throw "RC1 tag already exists at unexpected commit $remoteSha"
+            }
+          } else {
+            git tag $tag $env:GITHUB_SHA
+            git push origin "refs/tags/$tag"
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to publish RC1 tag' }
+          }
+
           gh release create $tag `
             'VOROTEX-K15-Status-Lab-latest-win-x64.zip#VOROTEX K15 Status Lab RC1 (win-x64)' `
             'VOROTEX-K15-Status-Lab-latest-win-x64.sha256#SHA256' `
             --target $env:GITHUB_SHA `
             --title 'VOROTEX K15 Status Lab RC1' `
             --notes-file 'extensions/k15-status-lab/README-RC1.md'
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to create immutable RC1 release' }
