@@ -184,7 +184,9 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Create or update sync PR
+        id: sync_pr
         if: steps.publish.outputs.changed == 'true'
+        continue-on-error: true
         shell: bash
         working-directory: fork
         env:
@@ -213,3 +215,19 @@ jobs:
           else
             gh pr create --base main --head sync/k15-status-lab --title "$TITLE" --body "$BODY"
           fi
+
+      - name: Report PR creation fallback
+        if: steps.publish.outputs.changed == 'true' && steps.sync_pr.outcome == 'failure'
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.publish.outputs.source_sha }}
+        run: |
+          {
+            echo "## Status Lab mirror branch published"
+            echo
+            echo "The curated mirror was committed and pushed successfully, but repository settings did not allow GitHub Actions to create/update the pull request."
+            echo
+            echo "- Branch: \`sync/k15-status-lab\`"
+            echo "- Source commit: \`$SOURCE_SHA\`"
+            echo "- Next step: create or update the PR through an owner/API publication path."
+          } >> "$GITHUB_STEP_SUMMARY"
