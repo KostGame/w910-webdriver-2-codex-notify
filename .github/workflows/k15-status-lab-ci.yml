@@ -30,11 +30,24 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Read mirror maturity
+        id: maturity
+        shell: pwsh
+        run: |
+          $p = Get-Content extensions/k15-status-lab/provenance.json -Raw | ConvertFrom-Json
+          "status=$($p.distributionStatus)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $lighting = Test-Path 'extensions/k15-status-lab/src/lighting-lab/Vorotex.K15.LightingLab.csproj'
+          "lighting=$($lighting.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          if (-not $lighting -and $p.distributionStatus -ne 'preview') {
+            throw 'Lighting Lab is mandatory for beta/release-candidate mirrors'
+          }
+
       - name: Build mirrored Status Lab
         shell: pwsh
         run: dotnet build extensions/k15-status-lab/src/Vorotex.K15.StatusLab.csproj -c Release
 
       - name: Build mirrored Lighting Lab
+        if: steps.maturity.outputs.lighting == 'true'
         shell: pwsh
         run: dotnet build extensions/k15-status-lab/src/lighting-lab/Vorotex.K15.LightingLab.csproj -c Release
 
@@ -43,6 +56,7 @@ jobs:
         run: dotnet publish extensions/k15-status-lab/src/Vorotex.K15.StatusLab.csproj -c Release -r win-x64 -o artifacts/k15-status-lab
 
       - name: Publish portable Lighting Lab
+        if: steps.maturity.outputs.lighting == 'true'
         shell: pwsh
         run: dotnet publish extensions/k15-status-lab/src/lighting-lab/Vorotex.K15.LightingLab.csproj -c Release -r win-x64 -o artifacts/k15-lighting-lab
 
@@ -54,9 +68,11 @@ jobs:
             'artifacts/k15-status-lab/status-lab-config.example.toml',
             'artifacts/k15-status-lab/configurator/index.html',
             'artifacts/k15-status-lab/codex-hook-logger.ps1',
-            'artifacts/k15-status-lab/install-codex-hooks.ps1',
-            'artifacts/k15-lighting-lab/Vorotex.K15.LightingLab.exe'
+            'artifacts/k15-status-lab/install-codex-hooks.ps1'
           )
+          if ('${{ steps.maturity.outputs.lighting }}' -eq 'true') {
+            $required += 'artifacts/k15-lighting-lab/Vorotex.K15.LightingLab.exe'
+          }
           foreach ($path in $required) {
             if (-not (Test-Path $path)) { throw "Missing publish asset: $path" }
           }
@@ -70,4 +86,4 @@ jobs:
           if ($p.sourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'Invalid source commit SHA' }
           if ($p.protocolFoundation -ne 'luftaquila/w910-webdriver') { throw 'Unexpected protocol foundation' }
           if ($p.license -ne 'GPL-3.0-only') { throw 'Unexpected component license' }
-          if ($p.distributionStatus -notin @('beta', 'release-candidate')) { throw 'Unexpected distribution status' }
+          if ($p.distributionStatus -notin @('preview', 'beta', 'release-candidate')) { throw 'Unexpected distribution status' }
