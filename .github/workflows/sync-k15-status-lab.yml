@@ -11,6 +11,8 @@ on:
         description: Optional exact source commit SHA; fail closed if the ref resolves elsewhere
         required: false
         default: ''
+  schedule:
+    - cron: '17 */6 * * *'
   push:
     branches:
       - main
@@ -69,6 +71,33 @@ jobs:
             exit 1
           fi
 
+      - name: Guard curated whitelist against source drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/source/status-lab"
+
+          known_root='AssemblyInfo.cs ConfigToml.cs EventJournal.cs JournalStateNormalizer.cs K15HidLightingController.cs K15HidProtocol.cs K15RgbCanary.cs Program.cs StateReducer.cs StatusLabApplicationContext.cs StatusLabConfig.cs TrayIconFactory.cs Vorotex.K15.StatusLab.csproj WindowsNotificationPoller.cs codex-hook-logger.ps1 install-codex-hooks.ps1 status-lab-config.example.toml status-lab-config.example.json'
+          while IFS= read -r path; do
+            name="$(basename "$path")"
+            case " $known_root " in
+              *" $name "*) ;;
+              *) echo "Unmirrored top-level build/runtime candidate: $name" >&2; exit 1 ;;
+            esac
+          done < <(find "$SRC" -maxdepth 1 -type f \( -name '*.cs' -o -name '*.csproj' -o -name '*.ps1' -o -name 'status-lab-config.example.*' \) -print | sort)
+
+          known_lighting='LightingLabForm.cs LightingLabSession.cs Program.cs Vorotex.K15.LightingLab.csproj'
+          while IFS= read -r path; do
+            name="$(basename "$path")"
+            case " $known_lighting " in
+              *" $name "*) ;;
+              *) echo "Unmirrored Lighting Lab build candidate: $name" >&2; exit 1 ;;
+            esac
+          done < <(find "$SRC/lighting-lab" -maxdepth 1 -type f \( -name '*.cs' -o -name '*.csproj' \) -print | sort)
+
+          test -f "$SRC/configurator/index.html" || { echo 'Missing configurator/index.html' >&2; exit 1; }
+          test -f "$SRC/LICENSE.md" || { echo 'Missing component LICENSE.md' >&2; exit 1; }
+
       - name: Prepare sync branch
         shell: bash
         working-directory: fork
@@ -123,8 +152,12 @@ jobs:
           cp "$SRC/status-lab-config.example.toml" "$DST/src/status-lab-config.example.toml"
           cp "$SRC/configurator/index.html" "$DST/configurator/index.html"
           cp "$SRC/status-lab-config.example.toml" "$DST/status-lab-config.example.toml"
+          cp "$SRC/status-lab-config.example.json" "$DST/status-lab-config.example.json"
           cp "$SRC/lighting-lab/README.md" "$DST/lighting-lab/README.md"
           cp "$SRC/LICENSE.md" "$DST/LICENSE.md"
+          if [[ -f "$SRC/README-RC1.md" ]]; then
+            cp "$SRC/README-RC1.md" "$DST/README-RC1.md"
+          fi
 
           SOURCE_SHA="$(git -C "$GITHUB_WORKSPACE/source" rev-parse HEAD)"
           SOURCE_REF="${{ steps.source.outputs.ref }}"
@@ -137,7 +170,7 @@ jobs:
             "sourceCommit": "$SOURCE_SHA",
             "protocolFoundation": "luftaquila/w910-webdriver",
             "mirrorPolicy": "curated-whitelist",
-            "distributionStatus": "beta",
+            "distributionStatus": "release-candidate",
             "license": "GPL-3.0-only"
           }
           EOF
@@ -152,7 +185,7 @@ jobs:
           - Mirrored ref: $SOURCE_REF
           - Mirrored commit: $SOURCE_SHA
           - HID/protocol foundation: luftaquila/w910-webdriver
-          - Distribution status: beta / release-candidate track
+          - Distribution status: release candidate
           - Component license: GPL-3.0-only
 
           Development happens in the primary VOROTEX repository. Do not maintain an independent Status Lab implementation here.
@@ -195,15 +228,15 @@ jobs:
           SOURCE_REF: ${{ steps.source.outputs.ref }}
         run: |
           set -euo pipefail
-          TITLE="sync(k15-status-lab): update beta / RC mirror"
+          TITLE="sync(k15-status-lab): update release-candidate mirror"
           BODY=$(cat <<EOF
           Curated Status Lab sync from the primary VOROTEX repository.
 
           - Source ref: \`$SOURCE_REF\`
           - Exact source commit: \`$SOURCE_SHA\`
-          - Distribution track: beta / release candidate
-          - Mirror policy: explicit whitelist
-          - Includes Status Lab + Lighting Lab
+          - Distribution track: release candidate
+          - Mirror policy: explicit whitelist + drift guard
+          - Includes Status Lab + Lighting Lab + RC notes/config references
           - Primary development stays in \`KostGame/vorotex-kb-profiles-and-macros2vibecoding\`
 
           Review this PR normally. Sync never commits directly to downstream \`main\` and does not rewrite fork-specific README/NOTICE documentation.
